@@ -1,0 +1,53 @@
+Lissage Itératif
+1. Laplacien Simple (iterativeLaplacian)
+Lambda (λ) : 0.1 à 0.5
+Valeurs typiques : 0.3 (bon compromis)
+Plus λ est grand, plus le lissage est fort par itération
+⚠️ Si λ > 0.5, risque d'instabilité
+Nombre d'itérations : 10 à 100
+Commencez avec 20-30 itérations
+Plus d'itérations = plus de lissage (mais aussi plus de perte de volume)
+
+2. BiLaplacien (iterativeBilaplacian)
+Lambda (λ) : 0.3 à 0.7
+Valeurs typiques : 0.5 (recommandé)
+Peut accepter des valeurs plus grandes que le Laplacien simple car le processus en deux étapes préserve mieux le volume
+Nombre d'itérations : 5 à 50
+Commencez avec 10-15 itérations
+Moins d'itérations nécessaires qu'avec le Laplacien simple pour un résultat similaire
+
+3. Taubin λ-µ (iterativeLambdaNu)
+Lambda (λ) : 0.5 à 0.7
+Valeurs typiques : 0.6 ou 0.65 (recommandé)
+C'est la méthode la plus stable, peut accepter des λ plus grands
+µ est calculé automatiquement par la formule : µ = λ / (0.1·λ - 1)
+Nombre d'itérations : 10 à 100
+Commencez avec 20-30 itérations
+Cette méthode préserve le mieux le volume, donc vous pouvez utiliser plus d'itérations
+
+Lissage Global
+4. Global Laplacian (globalLaplacian)
+Constraints : Sélectionnez les sommets que vous voulez fixer
+Typiquement : les bords du mesh ou des points spécifiques
+Minimum recommandé : au moins 3-5 sommets non colinéaires pour éviter une solution triviale
+Vous pouvez sélectionner par exemple les sommets d'une bordure
+Weight : Non utilisé pour cette méthode (c'est une contrainte dure)
+
+        5. Global BiLaplacian (globalBilaplacian)
+Constraints : Sélectionnez les sommets que vous voulez influencer (contraintes douces)
+Même principe que ci-dessus
+Au moins quelques sommets pour guider le lissage
+Weight (constraintWeight) : 1.0 à 1000.0
+Valeurs faibles (1.0 - 10.0) : Lissage fort, les contraintes sont peu respectées
+Valeurs moyennes (10.0 - 100.0) : Bon équilibre - Commencez avec 100.0
+Valeurs fortes (100.0 - 1000.0) : Les contraintes sont strictement respectées, peu de lissage
+Typique : 100.0 est un bon point de départ
+<hr></hr>
+Recommandations Pratiques
+Pour tester rapidement :
+Laplacien Simple : λ=0.3, 30 itérations
+BiLaplacien : λ=0.5, 15 itérations
+Taubin λ-µ : λ=0.6, 30 itérations
+Global Laplacian : Contraindre 5-10 sommets sur les bords
+Global BiLaplacian : Contraindre 5-10 sommets, weight=100.0
+Conseil : Commencez toujours avec des valeurs conservatrices et augmentez progressivement pour voir l'effet !

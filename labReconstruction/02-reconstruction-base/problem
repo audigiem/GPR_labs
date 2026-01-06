@@ -1,0 +1,133 @@
+THis is my current output:
+
+Using 600003 constraint points (from 200001 original points)
+Building RBF system...
+  Building matrix: 0%
+  Building matrix: 9%
+  Building matrix: 19%
+  Building matrix: 29%
+  Building matrix: 39%
+  Building matrix: 49%
+  Building matrix: 59%
+  Building matrix: 69%
+  Building matrix: 79%
+  Building matrix: 89%
+  Building matrix: 99%
+Matrix built with 71880173 non-zero entries
+Matrix construction time (SEQUENTIAL): 7.996 seconds
+Regularization time: 0.035 seconds
+Solving sparse linear system (this may take a while)...
+Eigen sequential mode: using 1 thread for solver
+Starting BiCGSTAB iterations with tracking...
+  Starting iterations (tracking every 100 iterations)...
+  Iteration 100: relative residual = 0.190725, solver error = 0.190725, time = 16.205s
+  Iteration 200: relative residual = 0.0975002, solver error = 0.0975002, time = 33.633s
+  Iteration 300: relative residual = 0.0698189, solver error = 0.0698189, time = 52.832s
+  Iteration 400: relative residual = 3.08731, solver error = 3.08731, time = 71.618s
+  Iteration 500: relative residual = 0.876649, solver error = 0.876649, time = 89.946s
+  Iteration 600: relative residual = 0.648634, solver error = 0.648634, time = 112.217s
+  Iteration 700: relative residual = 0.59276, solver error = 0.59276, time = 132.484s
+  Iteration 800: relative residual = 0.31562, solver error = 0.31562, time = 149.545s
+  Iteration 900: relative residual = 0.312348, solver error = 0.312348, time = 165.798s
+  Iteration 1000: relative residual = 0.219598, solver error = 0.219598, time = 182.518s
+  Iteration 1100: relative residual = 0.208084, solver error = 0.208084, time = 199.246s
+  Iteration 1200: relative residual = 0.166167, solver error = 0.166167, time = 216.693s
+  Iteration 1300: relative residual = 0.160031, solver error = 0.160031, time = 235.695s
+  Iteration 1400: relative residual = 0.244621, solver error = 0.244621, time = 252.288s
+  Iteration 1500: relative residual = 0.262337, solver error = 0.262337, time = 269.394s
+  Iteration 1600: relative residual = 0.155063, solver error = 0.155063, time = 286.035s
+  Iteration 1700: relative residual = 0.166462, solver error = 0.166462, time = 302.49s
+  Iteration 1800: relative residual = 0.11502, solver error = 0.11502, time = 319.297s
+  Iteration 1900: relative residual = 0.144221, solver error = 0.144221, time = 337.056s
+  Iteration 2000: relative residual = 0.126583, solver error = 0.126583, time = 354.639s
+  Iteration 2100: relative residual = 0.107726, solver error = 0.107726, time = 371.617s
+  Iteration 2200: relative residual = 0.12345, solver error = 0.12345, time = 388.449s
+  Iteration 2300: relative residual = 0.084656, solver error = 0.084656, time = 405.045s
+  Iteration 2400: relative residual = 0.0819644, solver error = 0.0819644, time = 421.536s
+  Iteration 2500: relative residual = 0.0627463, solver error = 0.0627463, time = 438.313s
+  Iteration 2600: relative residual = 0.0782717, solver error = 0.0782717, time = 454.752s
+  Iteration 2700: relative residual = 0.0669107, solver error = 0.0669107, time = 471.628s
+  Iteration 2800: relative residual = 0.0371781, solver error = 0.0371781, time = 489.216s
+  Iteration 2900: relative residual = 0.0721522, solver error = 0.0721522, time = 506.492s
+  Iteration 3000: relative residual = 0.0478407, solver error = 0.0478407, time = 523.436s
+  Iteration 3100: relative residual = 0.156586, solver error = 0.156586, time = 540.473s
+  Iteration 3200: relative residual = 0.13888, solver error = 0.13888, time = 557.14s
+  Iteration 3300: relative residual = 0.165438, solver error = 0.165438, time = 575.362s
+  Iteration 3400: relative residual = 0.635788, solver error = 0.635788, time = 592.489s
+  Iteration 3500: relative residual = 0.803686, solver error = 0.803686, time = 609.542s
+  Iteration 3600: relative residual = 0.670798, solver error = 0.670798, time = 626.653s
+  Iteration 3700: relative residual = 0.884693, solver error = 0.884693, time = 645.099s
+
+
+  This is what my requirements are:
+  Input: Set of pairs (pi , vi ), pi ∈ R3 , vi ∈ R
+  Output: Smooth interpolating function f .
+  f (p) =
+  m
+  X
+  fi (p) = ϕ(∥p − pi ∥) · ci
+  fi (p)
+  i=1
+  Gaussian RBF:
+  ϕ(r) = exp(−r2 /2c2 )
+  Interpolating conditions:
+  f (pi ) = vi =⇒ f (pi ) =
+  m
+  X
+  fj (pi ) = vi =⇒
+  j=1
+  
+  m
+  X
+  ϕ(∥pi − pj ∥) · cj = vi =⇒ A · c = v
+  j=1
+  
+  ϕ(∥p1 − p2 ∥) · · · ϕ(∥p1 − pm ∥)
+  ϕ(∥p2 − p2 ∥) · · · ϕ(∥p2 − pm ∥) 
+  
+  
+  ..
+  ..
+  ...
+  
+  .
+  .
+  ϕ(∥pm − p1 ∥) ϕ(∥pm − p2 ∥) · · · ϕ(∥pm − pm ∥)
+  ϕ(∥p1 − p1 ∥)
+   ϕ(∥p2 − p1 ∥)
+  
+  A=
+  ..
+  
+  .
+  c = c1 c2 · · ·
+  cm
+  T
+  v = v1 v2 · · ·
+  vm
+  T
+  Problems:
+  • We want to interpolate, so f (pi ) = 0 for all input points. Which means A · c = 0. The
+  trivial solution is c = 0.
+  −
+  – Create artificial points. For each pi , create p+
+  i = pi + d · ni and pi = pi − d · ni ,
+  −
+  such that f (p+
+  i ) = d and f (pi ) = −d.
+  • As m increases matrix A is going to become ill-conditioned.
+  – Apply a regularization by A′ = A + λI.
+  • Matrix A is dense and can be very large (m × m).
+  – Use gaussian RBFs with compact support for a sparse matrix.
+  – Loses its generalization power (holes are undefined).
+  – Solution: Give increasing support to a decreasing number of points.
+  (
+  exp(−r2 /2c2 )
+  ϕ(r) =
+  0
+  3
+  if r < 3c
+  otherwise
+
+
+  Correct me if I'm wrong, but it seems like the solver is struggling to converge within a reasonable number of iterations. what can I do to improve the convergence rate?

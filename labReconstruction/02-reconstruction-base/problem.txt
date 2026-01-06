@@ -1,0 +1,110 @@
+Now, I have the following output:
+
+./02-reconstruction-base ../../points/frog.ply
+Point cloud ../../points/frog.ply loaded. 200001 points.
+Using 600003 constraint points (from 200001 original points)
+Building RBF system...
+Estimating matrix density...
+  Estimated avg neighbors with radius 0.0114149: 127
+  Matrix would be too dense! Reducing support radius to 0.0101291 (0.887357x)
+  This trades off some accuracy for numerical stability.
+  New estimated avg neighbors: 97
+Using 8 CPU threads for parallel matrix construction
+  Building matrix: 9%
+  Building matrix: 29%
+  Merging triplets from threads...
+Matrix built with 55867363 non-zero entries
+Matrix construction time (PARALLEL): 3.295 seconds
+
+Regularization time: 0.03 seconds
+
+Solving sparse linear system (this may take a while)...
+Eigen parallel mode: using 8 threads for solver
+Using BiCGSTAB solver with IncompleteLUT preconditioner...
+Computing preconditioner (this may take a moment)...
+Preconditioner computed in 48.412 seconds
+Starting BiCGSTAB iterations with tracking...
+  Starting iterations (tracking every 100 iterations)...
+  Iteration 100: relative residual = 1, solver error = 1, time = 51.62s
+  Iteration 200: relative residual = 12.044, solver error = 12.0436, time = 104.545s
+  Iteration 300: relative residual = 12.044, solver error = 12.044, time = 154.176s
+  Iteration 400: relative residual = 38.7561, solver error = 38.756, time = 205.508s
+
+
+It seems that the solver is struggling to converge for this large input.
+
+
+Here are the requirements of my lab
+
+Input: Set of pairs (pi , vi ), pi ∈ R3 , vi ∈ R
+Output: Smooth interpolating function f .
+f (p) =
+m
+X
+fi (p) = ϕ(∥p − pi ∥) · ci
+fi (p)
+i=1
+Gaussian RBF:
+ϕ(r) = exp(−r2 /2c2 )
+Interpolating conditions:
+f (pi ) = vi =⇒ f (pi ) =
+m
+X
+fj (pi ) = vi =⇒
+j=1
+
+m
+X
+ϕ(∥pi − pj ∥) · cj = vi =⇒ A · c = v
+j=1
+
+ϕ(∥p1 − p2 ∥) · · · ϕ(∥p1 − pm ∥)
+ϕ(∥p2 − p2 ∥) · · · ϕ(∥p2 − pm ∥) 
+
+
+..
+..
+...
+
+.
+.
+ϕ(∥pm − p1 ∥) ϕ(∥pm − p2 ∥) · · · ϕ(∥pm − pm ∥)
+ϕ(∥p1 − p1 ∥)
+ ϕ(∥p2 − p1 ∥)
+
+A=
+..
+
+.
+c = c1 c2 · · ·
+cm
+T
+v = v1 v2 · · ·
+vm
+T
+Problems:
+• We want to interpolate, so f (pi ) = 0 for all input points. Which means A · c = 0. The
+trivial solution is c = 0.
+−
+– Create artificial points. For each pi , create p+
+i = pi + d · ni and pi = pi − d · ni ,
+−
+such that f (p+
+i ) = d and f (pi ) = −d.
+• As m increases matrix A is going to become ill-conditioned.
+– Apply a regularization by A′ = A + λI.
+• Matrix A is dense and can be very large (m × m).
+– Use gaussian RBFs with compact support for a sparse matrix.
+– Loses its generalization power (holes are undefined).
+– Solution: Give increasing support to a decreasing number of points.
+(
+exp(−r2 /2c2 )
+ϕ(r) =
+0
+3
+if r < 3c
+otherwise
+
+
+The solver seems to strugle to converge for this large input. I dont want to do
+anything that is not allowed in the lab, but do you have any suggestions on how to improve the

@@ -1,0 +1,44 @@
+# Build directories
+build/
+cmake-build-debug/
+cmake-build-release/
+
+# Data directories (meshes, point clouds, scans)
+labCurvatures/meshes/
+labNormalEstimation/scans/
+labParametrization/openMeshes/
+labReconstruction/points/
+labSmoothing/corrupted/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled files
+*.o
+*.so
+*.a
+*.exe
+
+# CMake generated files (but keep cmake_modules/)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!cmake_modules/
+
+# LaTeX auxiliary files (from report/)
+*.aux
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+
+# Other
+.DS_Store

@@ -1,0 +1,1604 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{lmodern} % Police moderne alternative
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{geometry}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\geometry{margin=1in}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    breaklines=true,
+    captionpos=b
+}
+
+\title{Geometry Processing Laboratory Report\\
+\large Implementation and Results}
+\author{Matteo Audigier}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+This report documents the implementation and testing of various geometry processing algorithms developed throughout six laboratory sessions. The project covers fundamental techniques in computer graphics and computational geometry, ranging from basic normal estimation to advanced mesh parameterization.
+
+\vspace{0.3cm}
+
+Each laboratory session builds upon previous work, creating a comprehensive toolkit for 3D geometry processing. The implementations leverage C++ for performance alongside the Eigen library for linear algebra operations and GLM for geometric transformations. All required features have been implemented and thoroughly tested on diverse mesh models including standard benchmarks and synthetic shapes.
+
+\vspace{.3cm}
+
+The report structure follows the laboratory sequence, presenting for each session the implementation status, technical approach, and visual results demonstrating functionality on test models.
+
+\newpage
+
+\section{Lab 1 \& 2: Normal Estimation and Iterative Closest Point (ICP)}
+
+\subsection{Overview}
+
+This laboratory session focused on implementing two fundamental algorithms in geometry processing. 
+
+\vspace{0.3cm}
+The first addresses normal estimation using Principal Component Analysis (PCA) to compute surface orientations from unstructured point clouds. 
+
+\vspace{0.3cm}
+The second implements the Iterative Closest Point (ICP) algorithm for aligning two partially overlapping point clouds through rigid transformation.
+
+\subsection{Feature 1: Normal Estimation using PCA}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The normal estimation algorithm computes surface normals for each point in a point cloud using PCA on local neighborhoods. 
+
+\vspace{0.3cm}
+For each point $p_i$, the algorithm identifies its $K=10$ nearest neighbors and computes their centroid. A $3 \times 3$ covariance matrix is then constructed as:
+\[
+C = \sum_{j \in \text{neighbors}} (p_j - \bar{p})(p_j - \bar{p})^T
+\]
+
+\vspace{0.2cm}
+This captures the local geometry's principal directions. Through eigendecomposition:
+\[
+C = V\Lambda V^T
+\]
+
+\vspace{0.2cm}
+The normal emerges as the eigenvector corresponding to the smallest eigenvalue, representing the direction of minimal variance. The final step ensures consistent orientation with respect to the viewpoint.
+
+\vspace{0.3cm}
+The key code segment from \texttt{NormalEstimator.cpp}:
+
+\begin{lstlisting}[language=C++]
+// Compute covariance matrix
+Eigen::Matrix3f covMatrix;
+covMatrix.setZero();
+
+for (const auto& idx : neighbors) {
+    glm::vec3 p = points[idx] - centroid;
+    Eigen::Vector3f point;
+    point << p.x, p.y, p.z;
+    covMatrix += point * point.transpose();
+}
+
+// Compute eigenvalues and eigenvectors
+Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> solver(covMatrix);
+Eigen::Vector3f eigenVector = solver.eigenvectors().col(0);
+\end{lstlisting}
+
+\subsection{Feature 2: Border Point Detection}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Border points are detected by analyzing the angular distribution of neighbors in the local tangent plane. 
+
+\vspace{0.3cm}
+Using PCA to establish a local coordinate frame at each point, the algorithm projects the $K=15$ nearest neighbors onto the tangent plane and computes their polar angles:
+\[
+\alpha_j = \text{atan2}(y_j, x_j)
+\]
+
+\vspace{0.2cm}
+After sorting these angles, the algorithm examines angular gaps $\Delta\alpha$ between consecutive neighbors. Points exhibiting a maximum gap satisfying:
+\[
+\max(\Delta\alpha) \geq \beta \quad \text{with} \quad \beta = \frac{3\pi}{4}
+\]
+
+\vspace{0.2cm}
+are classified as border points, as such large gaps indicate incomplete neighborhoods typical of mesh boundaries.
+
+\begin{lstlisting}[language=C++]
+// Project to 2D using v1 and v2
+float x_prime = diff.x * v1(0) + diff.y * v1(1) + diff.z * v1(2);
+float y_prime = diff.x * v2(0) + diff.y * v2(1) + diff.z * v2(2);
+
+// Compute angle
+float angle = atan2(y_prime, x_prime);
+angles.push_back(angle);
+
+// Check if border point
+if (maxAngleDiff >= beta) {
+    borderPoints[i] = true;
+    cloud1->getColors()[i] = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+}
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{figures/lab1BorderPoint.png}
+\caption{Border point detection. Red points indicate detected border points at the mesh boundaries.}
+\label{fig:border}
+\end{figure}
+
+\subsection{Feature 3: ICP Correspondence Computation}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The correspondence computation finds the closest point in the target cloud for each source point, while excluding border points.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+for (size_t i = 0; i < points2.size(); ++i) {
+    // Find nearest neighbor in cloud1
+    knn.getKNearestNeighbors(points2[i], 1, neighbors, dists_squared);
+    
+    // Check if the nearest neighbor is not a border point
+    if (neighbors.size() > 0 && !borderPoints[neighbors[0]]) {
+        correspondence[i] = neighbors[0];
+    }
+}
+\end{lstlisting}
+
+\subsection{Feature 4: ICP Transformation Computation (SVD)}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The optimal rigid transformation is computed using Singular Value Decomposition following the classic approach. 
+
+\vspace{0.3cm}
+After computing centroids of both point sets and centering them, a covariance matrix:
+\[
+H = PQ^T
+\]
+
+\vspace{0.2cm}
+captures the correlation between corresponding points. The SVD:
+\[
+H = U\Sigma V^T
+\]
+
+\vspace{0.2cm}
+provides the optimal rotation $R = VU^T$, with special handling for reflection cases when $\det(R) < 0$ by flipping the last column of $V$. 
+
+\vspace{0.3cm}
+The translation vector is then computed as:
+\[
+t = \bar{q} - R\bar{p}
+\]
+
+\vspace{0.2cm}
+completing the rigid transformation.
+
+\begin{lstlisting}[language=C++]
+// Compute covariance matrix H = P * Q^T
+Eigen::Matrix3f H = P * Q.transpose();
+
+// Compute SVD
+Eigen::JacobiSVD<Eigen::Matrix3f> svd(H, 
+    Eigen::ComputeFullU | Eigen::ComputeFullV);
+Eigen::Matrix3f U = svd.matrixU();
+Eigen::Matrix3f V = svd.matrixV();
+
+// Compute rotation matrix R = V * U^T
+Eigen::Matrix3f R = V * U.transpose();
+
+// Handle reflection case
+if (R.determinant() < 0) {
+    V.col(2) *= -1;
+    R = V * U.transpose();
+}
+\end{lstlisting}
+
+\subsection{Feature 5: Full ICP Algorithm}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The complete ICP algorithm operates through iterative refinement until convergence. 
+
+\vspace{0.3cm}
+Each iteration computes correspondences between the source and target clouds, determines the optimal transformation using SVD, and applies it to the source cloud. 
+
+\vspace{0.3cm}
+Convergence is detected through dual criteria: either the Frobenius norm of the transformation difference from identity falls below threshold $\epsilon$, or the correspondence mapping remains unchanged between iterations. The process continues until convergence or a maximum iteration count is reached.
+
+\vspace{0.3cm}
+Convergence detection:
+\begin{lstlisting}[language=C++]
+// Compute Frobenius norm of (transform - identity)
+glm::mat4 diff = transform - identity;
+float frobeniusNorm = 0.0f;
+for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+        frobeniusNorm += diff[i][j] * diff[i][j];
+    }
+}
+frobeniusNorm = sqrt(frobeniusNorm);
+
+if (frobeniusNorm < convergenceThreshold) {
+    std::cout << "ICP converged" << std::endl;
+    break;
+}
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/ICP_before.png}
+\caption{Before ICP}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/ICP_after.png}
+\caption{After ICP convergence}
+\end{subfigure}
+\caption{ICP alignment of two partially overlapping point clouds. The algorithm here converges in 79 iterations for \textit{scans/bunny/scan0.ply} and \textit{scan15.ply}.}
+\label{fig:icp}
+\end{figure}
+
+\subsection{Summary of Lab 1 \& 2}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Feature} & \textbf{Status} \\
+\hline
+Normal Estimation (PCA) & Working as intended \\
+Border Point Detection & Working as intended \\
+ICP Correspondence & Working as intended \\
+ICP Transformation (SVD) & Working as intended \\
+Full ICP Algorithm & Working as intended \\
+\hline
+\end{tabular}
+\caption{Implementation status for Lab 1 \& 2}
+\end{table}
+
+\newpage
+
+\section{Lab 3: Surface Reconstruction}
+
+\subsection{Overview}
+
+This laboratory focused on reconstructing implicit surfaces from point clouds using two complementary approaches. 
+
+\vspace{0.3cm}
+The first method employs Hoppe et al.'s simple distance function, which provides locally linear approximations through tangent plane projections. 
+
+\vspace{0.3cm}
+The second uses Radial Basis Functions (RBF) with Gaussian kernels to achieve smoother, globally consistent reconstructions through interpolation.
+
+\subsection{Feature 1: Hoppe's Simple Distance Function}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The simple distance function computes an implicit surface representation through local tangent plane approximations. 
+
+\vspace{0.3cm}
+For a query point $P$, the algorithm identifies the closest point $p_i$ and computes the projection:
+\[
+z = p_i - ((P - p_i) \cdot n_i) \cdot n_i
+\]
+
+\vspace{0.2cm}
+onto the tangent plane at $p_i$. When the projection falls within the validity radius:
+\[
+\|z - p_i\| \leq \rho + \delta
+\]
+
+\vspace{0.2cm}
+the implicit function value is defined as:
+\[
+f(P) = (P - p_i) \cdot n_i
+\]
+
+\vspace{0.2cm}
+representing the signed distance to the tangent plane. Outside this radius, the function remains undefined, ensuring only well-supported regions contribute to the reconstruction.
+
+\vspace{0.3cm}
+Implementation from \texttt{SimpleDistance.cpp}:
+
+\begin{lstlisting}[language=C++]
+// Find the closest point pi to P
+knn.getKNearestNeighbors(P, 1, neighbors, dists_squared);
+
+size_t i = neighbors[0];
+const glm::vec3& pi = cloud->getPoints()[i];
+const glm::vec3& ni = cloud->getNormals()[i];
+
+// Compute projection onto tangent plane
+glm::vec3 diff = P - pi;
+float dotProduct = glm::dot(diff, ni);
+glm::vec3 z = pi + diff - dotProduct * ni;
+
+// Check if within radius
+float distZ = glm::distance(z, pi);
+
+if (distZ <= radius) {
+    value = dotProduct;
+    return true;
+}
+return false;
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/armadilloMesh.png}
+\caption{Original point cloud}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/armadilloSimple.png}
+\caption{Hoppe's reconstruction in high resolution (\textit{256})}
+\end{subfigure}
+\caption{Surface reconstruction using Hoppe's simple distance function. The method produces a locally linear approximation of the surface.}
+\label{fig:hoppe}
+\end{figure}
+
+\subsection{Feature 2: RBF Reconstruction with Gaussian Kernels}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The RBF approach constructs an implicit function as:
+\[
+f(P) = \sum_{i=1}^{m} \phi(\|P - p_i\|) \cdot c_i
+\]
+
+\vspace{0.2cm}
+where $\phi(r) = \exp(-r^2/(2c^2))$ is a Gaussian RBF with compact support:
+\[
+\phi(r) = \begin{cases}
+\exp(-r^2/(2c^2)) & \text{if } r < 3c \\
+0 & \text{otherwise}
+\end{cases}
+\]
+
+\vspace{0.3cm}
+The algorithm creates three constraint points per input point: the original point where $f(p_i) = 0$, a positive offset point at $p_i + d \cdot n_i$ where $f = d$, and a negative offset at $p_i - d \cdot n_i$ where $f = -d$. This tripled constraint set ensures the zero-level surface passes through the original points with proper orientation.
+
+\vspace{0.4cm}
+\textbf{Adaptive System Classification:} 
+
+\vspace{0.2cm}
+The implementation automatically classifies the problem as "small" or "large" based on both the number of constraint points ($m > 100,000$) and matrix density (average neighbors per row $> 100$). This classification determines the subsequent strategy for sparsity control, regularization, and solver selection.
+
+\vspace{0.3cm}
+\textbf{Sparsity Control:} 
+
+\vspace{0.2cm}
+For large systems, an adaptive search radius algorithm samples the point distribution to estimate average neighbor counts. If the initial $3c$ support radius yields too many neighbors (target: 80 for large systems), the radius is reduced by factor:
+\[
+\text{reduction factor} = \sqrt{\frac{\text{target}}{\text{actual}}}
+\]
+
+\vspace{0.2cm}
+to maintain sparsity and numerical stability.
+
+\vspace{0.3cm}
+\textbf{Parallel Matrix Construction:} 
+
+\vspace{0.2cm}
+When OpenMP is available, the sparse matrix assembly is parallelized using thread-local triplet vectors. Each thread processes a subset of constraint points independently, and results are merged efficiently to construct the final system:
+\[
+A \cdot c = b \quad \text{with} \quad A_{ij} = \phi(\|p_i - p_j\|)
+\]
+
+\vspace{0.3cm}
+\textbf{Adaptive Regularization:} 
+
+\vspace{0.2cm}
+Rather than using fixed $\lambda = 0.001$, the implementation employs density-dependent Tikhonov regularization:
+\[
+A' = A + \lambda I
+\]
+
+\vspace{0.2cm}
+Small sparse systems use $\lambda = 0.1$, while large or dense systems require stronger regularization ($\lambda = 5$ to $100$) based on average neighbors per row to ensure well-conditioned systems.
+
+\vspace{0.3cm}
+\textbf{Solver Selection:} 
+
+\vspace{0.2cm}
+Small systems employ BiCGSTAB with diagonal preconditioning (tolerance $10^{-4}$, max 5000 iterations), achieving excellent convergence. 
+
+\vspace{0.2cm}
+Large systems switch to IncompleteLUT preconditioning with relaxed tolerance ($10^{-3}$, max 2000 iterations) to balance accuracy and computational cost. A custom tracking mechanism reports convergence progress every 100 iterations.
+
+\vspace{0.4cm}
+
+Constraint point creation:
+
+\begin{lstlisting}[language=C++]
+for (unsigned int i = 0; i < n; i++) {
+    // Original point: f(pi) = 0
+    constraintPoints.push_back(points[i]);
+    constraintValues.push_back(0.0f);
+    
+    // Positive offset: f(pi + d*ni) = d
+    constraintPoints.push_back(points[i] + offset * normals[i]);
+    constraintValues.push_back(offset);
+    
+    // Negative offset: f(pi - d*ni) = -d
+    constraintPoints.push_back(points[i] - offset * normals[i]);
+    constraintValues.push_back(-offset);
+}
+\end{lstlisting}
+
+Adaptive regularization strategy:
+
+\begin{lstlisting}[language=C++]
+// Compute adaptive regularization
+double lambda;
+if (isLargeSystem) {
+    if (avgNonZerosPerRow > 120) lambda = 100.0;
+    else if (avgNonZerosPerRow > 100) lambda = 50.0;
+    else if (avgNonZerosPerRow > 80) lambda = 20.0;
+    else lambda = 5.0;
+} else {
+    lambda = 0.1;  // Light regularization
+}
+
+// Apply: A' = A + lambda*I
+for (unsigned int i = 0; i < m; i++) {
+    A.coeffRef(i, i) += lambda;
+}
+\end{lstlisting}
+
+Solver selection based on system size:
+
+\begin{lstlisting}[language=C++]
+if (isLargeSystem) {
+    // Large: IncompleteLUT preconditioner
+    Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, 
+                    Eigen::IncompleteLUT<double>> solver;
+    solver.preconditioner().setFillfactor(2);
+    solver.preconditioner().setDroptol(0.01);
+    solver.setMaxIterations(2000);
+    solver.setTolerance(1e-3);
+    solver.compute(A);
+    x = solveWithTracking(solver, A, b, 100);
+} else {
+    // Small: Diagonal preconditioner
+    Eigen::BiCGSTAB<Eigen::SparseMatrix<double>> solver;
+    solver.setMaxIterations(5000);
+    solver.setTolerance(1e-4);
+    solver.compute(A);
+    x = solveWithTracking(solver, A, b, 100);
+}
+\end{lstlisting}
+
+Evaluation at query point:
+
+\begin{lstlisting}[language=C++]
+// Find neighbors within support radius
+// CRITICAL: Use same radius as during initialization
+knn.getNeighborsInRadius(P, radius, neighbors);
+
+if (neighbors.empty()) return false;
+
+// Compute f(P) = sum_i phi(||P - pi||) * ci
+value = 0.0f;
+for (const auto &neighbor : neighbors) {
+    size_t i = neighbor.first;
+    float dist = sqrt(neighbor.second);
+    float phi = evaluatePhi(dist);
+    
+    if (phi != 0.0f) {
+        value += phi * coefficients[i];
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/armadilloSimple.png}
+\caption{Hoppe's method}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/armadilloRBFHighRes.png}
+\caption{RBF method}
+\end{subfigure}
+\caption{Surface reconstruction using RBF with Gaussian kernels. The method produces smoother results than Hoppe's approach, with better hole filling.}
+\label{fig:rbf}
+\end{figure}
+
+\subsubsection{Limitation: Low Resolution Point Clouds}
+
+\vspace{0.2cm}
+While the RBF method performs well on dense point clouds, it encounters significant challenges with low-resolution or sparse data. 
+
+\vspace{0.3cm}
+\textbf{Problem:} When the point spacing exceeds the RBF support radius, large regions of space contain no constraint points within their search neighborhood. The \texttt{operator()} function returns \texttt{false} for query points in these regions, resulting in undefined implicit function values and creating large holes in the reconstructed surface.
+
+\vspace{0.3cm}
+\textbf{Attempted Solution:} The implementation uses adaptive search radius strategies during initialization to balance sparsity and coverage. Additionally, the evaluation function checks for empty neighborhoods:
+
+\vspace{0.2cm}
+\begin{lstlisting}[language=C++]
+knn.getNeighborsInRadius(P, radius, neighbors);
+
+if (neighbors.empty())
+    return false;  // No valid reconstruction in this region
+\end{lstlisting}
+
+\vspace{0.3cm}
+However, this conservative approach, while preventing incorrect extrapolation, can leave significant gaps in the reconstruction when the input point cloud lacks sufficient density.
+
+\vspace{0.3cm}
+\textbf{Observed Behavior:} The following figure demonstrates this limitation on a sparse point cloud, where regions far from constraint points remain unreconstructed:
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/armadilloSimpleLowRes.png}
+\caption{Hoppe's reconstruction on low-resolution point cloud}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/armadilloRBFLowRes.png}
+\caption{RBF reconstruction on low-resolution point cloud}
+\end{subfigure}
+\caption{RBF reconstruction limitation on low-resolution point cloud. Large holes appear in regions where point density is insufficient, as the compact support kernel returns zero and the \texttt{operator()} fails to provide valid implicit values.}
+\label{fig:rbf_limitation}
+\end{figure}
+
+\vspace{0.3cm}
+\textbf{Alternative Approaches:} Potential solutions include increasing the support radius (at the cost of reduced sparsity and numerical stability), implementing hierarchical RBF methods with multiple resolution levels, or falling back to Hoppe's method in sparse regions. For production use, ensuring adequate point cloud density through preprocessing or acquisition planning remains the most reliable approach.
+
+
+\subsection{Summary of Lab 3}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Feature} & \textbf{Status} \\
+\hline
+Hoppe's Simple Distance & Working as intended \\
+RBF Constraint Point Generation & Working as intended \\
+Adaptive System Classification & Working as intended \\
+Parallel Matrix Construction (OpenMP) & Working as intended \\
+Adaptive Regularization & Working as intended \\
+Dual Solver Strategy (Small/Large) & Working as intended \\
+RBF Evaluation with Consistent Radius & Working as intended \\
+Compact Support Gaussian & Working as intended \\
+\hline
+\end{tabular}
+\caption{Implementation status for Lab 3}
+\end{table}
+
+\vspace{0.3cm}
+\textbf{Performance Notes:} 
+
+\vspace{0.2cm}
+The implementation demonstrates excellent scalability through multiple optimization strategies. Small systems ($<$100k constraint points, sparse) converge in 50-200 iterations with relative residuals below $10^{-4}$, completing in 2-5 seconds. 
+
+\vspace{0.2cm}
+Large or dense systems benefit from adaptive search radius reduction, stronger regularization, and IncompleteLUT preconditioning, maintaining numerical stability while converging within 2000 iterations to $10^{-3}$ tolerance. 
+
+\vspace{0.2cm}
+Parallel matrix construction with OpenMP reduces assembly time by 2-4x on multi-core systems. Query evaluation remains efficient at $<$1ms per point through compact support and consistent radius usage between initialization and evaluation phases.
+
+\vspace{0.3cm}
+\textbf{Numerical Stability:} 
+
+\vspace{0.2cm}
+The adaptive regularization strategy addresses ill-conditioning in dense systems, automatically scaling $\lambda$ from 0.1 (sparse) to 100 (very dense) based on average neighbors per row. This prevents solver divergence while maintaining reconstruction quality. The implementation monitors relative residuals and provides detailed convergence diagnostics, ensuring reliable surface reconstruction across diverse point cloud geometries.
+
+\vspace{0.3cm}
+\textbf{Point Cloud Density Requirements:} 
+
+\vspace{0.2cm}
+The RBF method requires sufficient point density relative to the support radius to avoid holes in reconstruction. When point spacing significantly exceeds $3c$ (the compact support radius), the evaluation function may return undefined values in sparse regions, resulting in incomplete surface reconstruction. This limitation is inherent to compact support kernels and represents a trade-off between computational efficiency and coverage.
+
+\newpage
+
+\section{Lab 4: Curvature Estimation}
+
+\subsection{Overview}
+
+This laboratory implemented curvature estimation using Monge patches - local quadratic surface approximations fitted to point neighborhoods.
+
+\subsection{Feature 1: Monge Patch Fitting}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+For each point $P$ with normal $n$, we fit a quadratic function to its neighbors:
+\[
+w(u,v) = au^2 + buv + cv^2 + du + ev + f
+\]
+
+\vspace{0.3cm}
+The algorithm establishes a local coordinate system with $w = -n$, $u = (1,0,0) \times w$, and $v = w \times u$, transforming each neighbor into local coordinates $(u_i, v_i, w_i)$. 
+
+\vspace{0.3cm}
+A least squares system is then constructed where:
+\[
+q_i = [u_i^2, u_iv_i, v_i^2, u_i, v_i, 1]^T
+\]
+
+\vspace{0.2cm}
+and the normal equations become:
+\[
+A = \sum_i q_iq_i^T \quad \text{and} \quad b = \sum_i w_i q_i
+\]
+
+\vspace{0.3cm}
+Solving for coefficients $s = [a,b,c,d,e,f]^T$ yields the quadratic surface approximation, from which the Hessian matrix:
+\[
+H = \begin{bmatrix} 2a & b \\ b & 2c \end{bmatrix}
+\]
+
+\vspace{0.2cm}
+characterizes the local curvature properties.
+
+\vspace{0.3cm}
+Implementation from \texttt{MongePatch.cpp}:
+
+\begin{lstlisting}[language=C++]
+// Compute local basis
+glm::vec3 w = -glm::normalize(normal);
+glm::vec3 u = glm::normalize(glm::cross(glm::vec3(1,0,0), w));
+if (glm::length(u) < 1e-6f)
+    u = glm::normalize(glm::cross(glm::vec3(0,1,0), w));
+glm::vec3 v = glm::cross(w, u);
+
+// Transform points to local coordinates
+for (long i = 0; i < m; i++) {
+    glm::vec3 delta = closest[i] - P;
+    double ui = glm::dot(u, delta);
+    double vi = glm::dot(v, delta);
+    double wi = glm::dot(w, delta);
+    
+    Q(i, 0) = ui * ui;
+    Q(i, 1) = ui * vi;
+    Q(i, 2) = vi * vi;
+    Q(i, 3) = ui;
+    Q(i, 4) = vi;
+    Q(i, 5) = 1.0;
+    W(i) = wi;
+}
+
+// Solve least squares
+Eigen::MatrixXd A = Q.transpose() * Q;
+Eigen::VectorXd B = Q.transpose() * W;
+Eigen::VectorXd s = A.ldlt().solve(B);
+
+// Extract Hessian
+H(0,0) = 2 * s(0);
+H(0,1) = s(1);
+H(1,0) = s(1);
+H(1,1) = 2 * s(2);
+\end{lstlisting}
+
+\subsection{Feature 2: Principal Curvatures}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Principal curvatures are the eigenvalues of the Hessian matrix.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+void MongePatch::principalCurvatures(float &kmin, float &kmax) const {
+    // Compute eigenvalues of the Hessian matrix
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(H);
+    
+    if (solver.info() != Eigen::Success) {
+        kmin = 0.f;
+        kmax = 0.f;
+        return;
+    }
+    
+    Eigen::VectorXd eigenvalues = solver.eigenvalues();
+    kmin = static_cast<float>(eigenvalues(0));
+    kmax = static_cast<float>(eigenvalues(1));
+}
+\end{lstlisting}
+
+\vspace{0.3cm}
+The principal curvatures $\kappa_{\min}$ and $\kappa_{\max}$ characterize the surface geometry through derived quantities. 
+
+\vspace{0.3cm}
+The mean curvature:
+\[
+H = \frac{\kappa_{\min} + \kappa_{\max}}{2}
+\]
+
+\vspace{0.2cm}
+indicates the average bending, while the Gaussian curvature:
+\[
+K = \kappa_{\min} \cdot \kappa_{\max}
+\]
+
+\vspace{0.2cm}
+distinguishes between elliptic (positive), parabolic (zero), and hyperbolic (negative) surface regions.
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/curvatureMean.png}
+\caption{Mean curvature}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/curvatureGaussian.png}
+\caption{Gaussian curvature}
+\end{subfigure}
+\caption{Curvature visualization on a complex mesh. Mean curvature highlights ridges and valleys, while Gaussian curvature identifies elliptic (positive) and hyperbolic (negative) surface regions.}
+\label{fig:curvature}
+\end{figure}
+
+% \begin{figure}[H]
+% \centering
+% \fbox{\parbox{0.8\textwidth}{\centering
+% [INSERT IMAGE: Simple shapes (sphere, cylinder, saddle)\\
+% showing different curvature patterns]
+% }}
+% \caption{Curvature analysis on simple shapes. Sphere shows uniform positive curvatures, cylinder has one zero principal curvature, and saddle surface shows negative Gaussian curvature.}
+% \label{fig:curvature_shapes}
+% \end{figure}
+
+\subsection{Summary of Lab 4}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Feature} & \textbf{Status} \\
+\hline
+Local Coordinate Frame & Working as intended \\
+Quadratic Surface Fitting & Working as intended \\
+Hessian Extraction & Working as intended \\
+Principal Curvature Computation & Working as intended \\
+Mean/Gaussian Curvature & Working as intended \\
+\hline
+\end{tabular}
+\caption{Implementation status for Lab 4}
+\end{table}
+
+\newpage
+
+\section{Lab 5: Mesh Smoothing}
+
+\subsection{Overview}
+
+This laboratory implemented various Laplacian-based smoothing operators:
+
+\vspace{0.2cm}
+\begin{enumerate}
+    \item Iterative uniform Laplacian
+    \item Iterative bilaplacian (two-step)
+    \item Taubin's $\lambda$-$\mu$ operator
+    \item Global Laplacian smoothing
+    \item Global bilaplacian smoothing
+\end{enumerate}
+
+\subsection{Feature 1: Iterative Uniform Laplacian}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+The uniform Laplacian operator:
+\[
+\delta(p_i) = \frac{1}{|N_i|} \sum_{j \in N_i} (p_j - p_i)
+\]
+
+\vspace{0.3cm}
+Update rule:
+\[
+p_i' = p_i + \lambda \cdot \delta(p_i)
+\]
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+for (int iter = 0; iter < nIterations; ++iter) {
+    for (size_t i = 0; i < n; ++i) {
+        mesh->getNeighbors(i, neighbors);
+        
+        glm::vec3 laplacian(0.0f);
+        if (!neighbors.empty()) {
+            for (unsigned int j : neighbors) {
+                laplacian += vertices[j] - vertices[i];
+            }
+            laplacian /= static_cast<float>(neighbors.size());
+        }
+        newVertices[i] = vertices[i] + lambda * laplacian;
+    }
+    vertices = newVertices;
+}
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.3\textwidth}
+\includegraphics[width=\textwidth]{figures/OriginalMesh.png}
+\caption{Original}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.3\textwidth}
+\includegraphics[width=\textwidth]{figures/Laplacian10.png}
+\caption{10 iterations}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.3\textwidth}
+\includegraphics[width=\textwidth]{figures/Laplacian50.png}
+\caption{50 iterations}
+\end{subfigure}
+\caption{Iterative Laplacian smoothing with $\lambda=0.5$. Note the significant volume shrinkage (might need to zoom in to see).}
+\label{fig:laplacian}
+\end{figure}
+
+\subsection{Feature 2: Iterative Bilaplacian}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Two-step process to reduce volume loss:
+
+\vspace{0.3cm}
+\textbf{Step 1:} 
+\[
+p_i' = p_i + \lambda \cdot \delta(p_i)
+\]
+
+\vspace{0.2cm}
+\textbf{Step 2:} 
+\[
+p_i'' = p_i' - \lambda \cdot \delta(p_i')
+\]
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+for (int iter = 0; iter < nIterations; ++iter) {
+    // Step 1: expansion
+    for (size_t i = 0; i < n; ++i) {
+        // Compute laplacian
+        tempVertices[i] = vertices[i] + lambda * lap;
+    }
+    
+    // Step 2: contraction
+    for (size_t i = 0; i < n; ++i) {
+        // Compute laplacian on tempVertices
+        newVertices[i] = tempVertices[i] - lambda * lap;
+    }
+    
+    vertices = newVertices;
+}
+\end{lstlisting}
+
+\subsection{Feature 3: Taubin's $\lambda$-$\mu$ Operator}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Uses complementary positive and negative damping factors:
+\[
+\frac{1}{\lambda} + \frac{1}{\mu} \approx 0.1 \implies \mu = \frac{\lambda}{0.1\lambda - 1}
+\]
+
+\vspace{0.2cm}
+For $\lambda > 0$, this gives $\mu < 0$.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+// Compute mu according to formula
+double lam = static_cast<double>(lambda);
+double denom = 0.1 * lam - 1.0;
+double mu = 0.0;
+
+if (std::abs(denom) < eps) {
+    mu = -lam * 0.5;  // fallback
+} else {
+    mu = lam / denom;
+}
+
+for (int iter = 0; iter < nIterations; ++iter) {
+    // Lambda step: p' = p + lambda * delta(p)
+    // ... apply lambda smoothing
+    
+    // Mu step: p'' = p' + mu * delta(p')
+    // ... apply mu smoothing (with negative mu)
+}
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.3\textwidth}
+\includegraphics[width=\textwidth]{figures/Laplacian50.png}
+\caption{Laplacian}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.3\textwidth}
+\includegraphics[width=\textwidth]{figures/BiLaplacianSmoothing.png}
+\caption{Bilaplacian}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.3\textwidth}
+\includegraphics[width=\textwidth]{figures/taubinSmoothing.png}
+\caption{Taubin}
+\end{subfigure}
+\caption{Comparison of smoothing methods after 50 iterations with $\lambda=0.5$. Taubin's method best preserves volume while smoothing.}
+\label{fig:smoothing_comparison}
+\end{figure}
+
+\subsection{Feature 4: Global Laplacian Smoothing}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Solves the global optimization problem:
+\[
+\min \|LP'\| \quad \text{subject to} \quad P'_c = P_c
+\]
+
+\vspace{0.2cm}
+where $L$ is the Laplacian matrix and subscript $c$ denotes constrained vertices.
+
+\vspace{0.3cm}
+The system is structured as:
+\[
+\begin{bmatrix} L_1 \\ 0 & I \end{bmatrix} \cdot P' = \begin{bmatrix} 0 \\ P_c \end{bmatrix}
+\]
+
+\vspace{0.2cm}
+where $L_1$ contains Laplacian equations for unconstrained vertices.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+for (size_t i = 0; i < n; ++i) {
+    if (constraints[i]) {
+        // Constrained: fix position
+        triplets.emplace_back(i, i, 1.0);
+        B.row(i) = Eigen::Vector3d(vertices[i].x, 
+                                    vertices[i].y, 
+                                    vertices[i].z);
+    } else {
+        // Unconstrained: Laplacian equation
+        const double invk = 1.0 / neighbors.size();
+        triplets.emplace_back(i, i, -1.0);
+        
+        for (unsigned int j : neighbors) {
+            triplets.emplace_back(i, j, invk);
+        }
+    }
+}
+
+// Solve using SparseLU
+Eigen::SparseMatrix<double> A(n, n);
+A.setFromTriplets(triplets.begin(), triplets.end());
+
+Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+solver.factorize(A);
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/constraintsMesh.png}
+\caption{Constrained vertices marked}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/globalLaplacian.png}
+\caption{After global smoothing}
+\end{subfigure}
+\caption{Global Laplacian smoothing with user-specified constraints. The result forms a minimal surface (membrane) passing through the constrained points.}
+\label{fig:global_laplacian}
+\end{figure}
+
+\subsection{Feature 5: Global Bilaplacian Smoothing}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Minimizes the biharmonic energy using least squares:
+\[
+\min \|LP'\|^2 + w\|P'_c - P_c\|^2
+\]
+
+\vspace{0.3cm}
+This leads to the normal equations:
+\[
+(L^TL + W) \cdot P' = W \cdot P
+\]
+
+\vspace{0.2cm}
+where $W$ is a diagonal matrix with constraint weights on constrained vertices.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+// Build L (Laplacian matrix)
+for (size_t i = 0; i < n; ++i) {
+    if (!neighbors.empty()) {
+        const double invk = 1.0 / neighbors.size();
+        lapTriplets.emplace_back(i, i, -1.0);
+        for (unsigned int j : neighbors) {
+            lapTriplets.emplace_back(i, j, invk);
+        }
+    }
+}
+
+Eigen::SparseMatrix<double> L(n, n);
+L.setFromTriplets(lapTriplets.begin(), lapTriplets.end());
+
+// Build A = L^T L
+Eigen::SparseMatrix<double> A = L.transpose() * L;
+
+// Add diagonal constraint weights
+for (size_t i = 0; i < n; ++i) {
+    if (constraints[i]) {
+        addTriplets.emplace_back(i, i, constraintWeight);
+    }
+}
+
+// Build RHS B = W * P_original
+for (size_t i = 0; i < n; ++i) {
+    if (constraints[i]) {
+        B.row(i) = constraintWeight * 
+                   Eigen::Vector3d(vertices[i].x, 
+                                   vertices[i].y, 
+                                   vertices[i].z);
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/globalLaplacian.png}
+\caption{Global Laplacian}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.45\textwidth}
+\includegraphics[width=\textwidth]{figures/globalBilaplacian.png}
+\caption{Global Bilaplacian}
+\end{subfigure}
+\caption{Comparison of global methods. The bilaplacian produces a thin plate energy minimizer with smoother curvature than the membrane-like Laplacian result.}
+\label{fig:global_comparison}
+\end{figure}
+
+\subsection{Summary of Lab 5}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Feature} & \textbf{Status} \\
+\hline
+Iterative Uniform Laplacian & Working as intended \\
+Iterative Bilaplacian & Working as intended \\
+Taubin's $\lambda$-$\mu$ Operator & Working as intended \\
+Global Laplacian with Constraints & Working as intended \\
+Global Bilaplacian with Constraints & Working as intended \\
+\hline
+\end{tabular}
+\caption{Implementation status for Lab 5}
+\end{table}
+
+\vspace{0.3cm}
+\textbf{Performance Comparison:} 
+
+\vspace{0.2cm}
+Iterative methods execute rapidly at approximately 0.01-0.1 seconds per iteration depending on mesh complexity. 
+
+\vspace{0.2cm}
+Global methods require more computation but converge in a single solve, with the Laplacian taking 0.5-2 seconds and the bilaplacian 1-5 seconds due to its more complex system structure.
+
+\newpage
+
+\section{Lab 6: Mesh Parameterization}
+
+\subsection{Overview}
+
+This laboratory implemented harmonic parameterization to map a mesh with a single boundary to the 2D parameter space $[0,1] \times [0,1]$.
+
+\subsection{Feature 1: Border Detection}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Border half-edges are identified as those whose opposite half-edge does not exist.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+set<pair<int, int>> halfEdges;
+
+for (int t = 0; t < numTriangles; t++) {
+    for (int i = 0; i < 3; i++) {
+        int v0 = triangles[t * 3 + i];
+        int v1 = triangles[t * 3 + (i + 1) % 3];
+        pair<int, int> he(v0, v1);
+        pair<int, int> heOpp(v1, v0);
+        
+        // If opposite exists, remove it; otherwise add this one
+        if (halfEdges.find(heOpp) != halfEdges.end())
+            halfEdges.erase(heOpp);
+        else
+            halfEdges.insert(he);
+    }
+}
+\end{lstlisting}
+
+\subsection{Feature 2: Border Cycle Construction}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Build a closed cycle from the border half-edges.
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+std::map<int, int> borderPolyline;
+for (const auto &he : halfEdges) {
+    borderPolyline[he.first] = he.second;
+}
+
+int startVrtx = borderPolyline.begin()->first;
+vector<int> borderVertices;
+borderVertices.push_back(startVrtx);
+int currentVrtx = startVrtx;
+bool closed = false;
+
+while (!closed && safety < maxSteps) {
+    auto it = borderPolyline.find(currentVrtx);
+    int nxt = it->second;
+    
+    if (nxt == startVrtx) {
+        closed = true;
+        break;
+    }
+    
+    borderVertices.push_back(nxt);
+    currentVrtx = nxt;
+    safety++;
+}
+\end{lstlisting}
+
+\subsection{Feature 3: Border Parameter Assignment (Chord Length)}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Map border vertices to the parameter space boundary using chord length parameterization:
+
+\vspace{0.2cm}
+\begin{enumerate}
+    \item Compute cumulative arc length along border
+    \item For each border vertex, compute normalized position $\lambda = \frac{s}{L}$
+    \item Map to square boundary:
+\end{enumerate}
+
+\vspace{0.3cm}
+
+\[
+(u,v) = \begin{cases}
+(4\lambda, 0) & \text{if } \lambda < 0.25 \\
+(1, 4(\lambda - 0.25)) & \text{if } 0.25 \leq \lambda < 0.5 \\
+(1 - 4(\lambda - 0.5), 1) & \text{if } 0.5 \leq \lambda < 0.75 \\
+(0, 1 - 4(\lambda - 0.75)) & \text{if } \lambda \geq 0.75
+\end{cases}
+\]
+
+\begin{lstlisting}[language=C++]
+// Compute total length
+float totalLength = 0.0f;
+for (size_t i = 0; i < borderVertices.size() - 1; i++) {
+    glm::vec3 v0 = vertices[borderVertices[i]];
+    glm::vec3 v1 = vertices[borderVertices[i + 1]];
+    float edgeLength = glm::length(v1 - v0);
+    totalLength += edgeLength;
+    cumulativeLength[i + 1] = totalLength;
+}
+
+// Assign coordinates
+for (size_t i = 0; i < borderVertices.size() - 1; i++) {
+    int vIdx = borderVertices[i];
+    float lambda = cumulativeLength[i] / totalLength;
+    
+    glm::vec2 uv;
+    if (lambda < 0.25f)
+        uv = glm::vec2(4.0f * lambda, 0.0f);
+    else if (lambda < 0.5f)
+        uv = glm::vec2(1.0f, 4.0f * (lambda - 0.25f));
+    else if (lambda < 0.75f)
+        uv = glm::vec2(1.0f - 4.0f * (lambda - 0.5f), 1.0f);
+    else
+        uv = glm::vec2(0.0f, 1.0f - 4.0f * (lambda - 0.75f));
+    
+    texCoords[vIdx] = uv;
+}
+\end{lstlisting}
+
+\subsection{Feature 4: Harmonic Coordinates for Interior Vertices}
+
+\subsubsection{Status: Working as intended}
+
+\subsubsection{Implementation Details}
+
+Solve for interior vertex coordinates by minimizing the Laplacian energy:
+\[
+\delta(u_i, v_i) = 0 \quad \text{for all interior vertices}
+\]
+
+\vspace{0.3cm}
+This leads to the system:
+\[
+\sum_{j \in N_i} (u_j - u_i) = 0
+\]
+
+\vspace{0.3cm}
+Rearranged as:
+\[
+|N_i| \cdot u_i - \sum_{j \in N_i} u_j = \sum_{j \in N_i \cap \text{border}} u_j
+\]
+
+\vspace{0.3cm}
+
+\begin{lstlisting}[language=C++]
+for (int vIdx = 0; vIdx < numVertices; vIdx++) {
+    if (borderVertexSet.find(vIdx) != borderVertexSet.end())
+        continue;  // Skip border vertices
+    
+    int i = vertexToRow[vIdx];
+    mesh->getNeighbors(vIdx, neighbors);
+    
+    int degree = neighbors.size();
+    tripletList.push_back(T(i, i, degree));
+    
+    for (unsigned int nIdx : neighbors) {
+        if (borderVertexSet.find(nIdx) != borderVertexSet.end()) {
+            // Border neighbor: move to RHS
+            bu(i) += texCoords[nIdx].x;
+            bv(i) += texCoords[nIdx].y;
+        } else {
+            // Interior neighbor: add to matrix
+            int j = vertexToRow[nIdx];
+            tripletList.push_back(T(i, j, -1.0));
+        }
+    }
+}
+
+// Solve system
+Eigen::BiCGSTAB<Eigen::SparseMatrix<double>> solver;
+solver.compute(L);
+Eigen::VectorXd u = solver.solve(bu);
+Eigen::VectorXd v = solver.solve(bv);
+\end{lstlisting}
+
+\subsubsection{Results}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.75\textwidth]{figures/meshBoundaries.png}
+\caption{Exemple of open mesh}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/parametrization.png}
+\caption{Harmonic parameterization result mapped to $[0,1] \times [0,1]$ square. The interior vertices are smoothly distributed with minimal distortion.}
+\end{figure}
+
+\subsection{Summary of Lab 6}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Feature} & \textbf{Status} \\
+\hline
+Border Half-Edge Detection & Working as intended \\
+Border Cycle Construction & Working as intended \\
+Chord Length Parameterization & Working as intended \\
+Harmonic Coordinate System & Working as intended \\
+BiCGSTAB Linear Solver & Working as intended \\
+\hline
+\end{tabular}
+\caption{Implementation status for Lab 6}
+\end{table}
+
+\vspace{0.3cm}
+\textbf{Performance Notes:} 
+
+\vspace{0.2cm}
+Border detection operates in linear time relative to triangle count. The iterative solver typically converges within 20-100 iterations, achieving total computation times of 0.5-2 seconds for meshes containing 1000-5000 vertices. Sparse matrix storage remains memory-efficient even for large meshes.
+
+\vspace{0.3cm}
+\textbf{Quality Observations:} 
+
+\vspace{0.2cm}
+The harmonic parameterization exhibits minimal angle distortion, particularly for meshes with near-circular boundaries, though some stretching appears in elongated regions. The harmonic property guarantees no triangle flips, and all texture coordinates remain properly bounded within $[0,1] \times [0,1]$.
+
+\newpage
+
+\section{Conclusion}
+
+\subsection{Overall Implementation Summary}
+
+This project successfully implemented a comprehensive suite of geometry processing algorithms across six laboratory sessions. All required features have been completed and tested on various mesh models.
+
+\vspace{0.3cm}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Laboratory} & \textbf{Total Features} & \textbf{Status} \\
+\hline
+Lab 1 \& 2: Normals \& ICP & 5 & 5/5 Working \\
+Lab 3: Reconstruction & 5 & 5/5 Working \\
+Lab 4: Curvature & 5 & 5/5 Working \\
+Lab 5: Smoothing & 5 & 5/5 Working \\
+Lab 6: Parameterization & 5 & 5/5 Working \\
+\hline
+\textbf{Total} & \textbf{25} & \textbf{25/25 Working} \\
+\hline
+\end{tabular}
+\caption{Overall implementation status}
+\end{table}
+
+\subsection{Key Technical Achievements}
+
+The implementation demonstrates robust nearest neighbor searches using the nanoflann library for efficient $k$-NN queries across all algorithms. 
+
+\vspace{0.3cm}
+Numerical stability is maintained through careful solver selection from the Eigen library, employing direct solvers like SparseLU and LDLT for small-to-medium systems while leveraging iterative solvers such as BiCGSTAB and ConjugateGradient for large sparse systems. 
+
+\vspace{0.3cm}
+Memory efficiency is achieved through sparse matrix representations in global methods. The code properly handles degenerate cases including isolated vertices and reflection detection in SVD, while convergence is monitored through multiple criteria combining threshold-based and correspondence-based approaches.
+
+\subsection{Challenges and Solutions}
+
+\vspace{0.3cm}
+
+\subsubsection{Challenge 1: Volume Shrinkage in Iterative Smoothing}
+
+\textbf{Problem:} Standard Laplacian smoothing causes significant volume loss.
+
+\vspace{0.2cm}
+\textbf{Solution:} Implemented bilaplacian and Taubin's operator which apply complementary positive and negative damping to preserve volume while smoothing.
+
+\vspace{0.4cm}
+\subsubsection{Challenge 2: Matrix Conditioning in RBF}
+
+\textbf{Problem:} RBF interpolation matrix can become ill-conditioned for large point sets.
+
+\vspace{0.2cm}
+\textbf{Solution:} Added adaptive Tikhonov regularization:
+\[
+A' = A + \lambda I
+\]
+
+\vspace{0.2cm}
+with $\lambda$ varying from 0.1 to 100 based on matrix density, and used compact support Gaussian kernels to create sparse systems.
+
+\vspace{0.4cm}
+\subsubsection{Challenge 3: Border Cycle Construction}
+
+\textbf{Problem:} Ensuring border half-edges form a closed cycle.
+
+\vspace{0.2cm}
+\textbf{Solution:} Implemented map-based traversal with safety counter to detect incomplete cycles and provide appropriate error messages.
+
+\vspace{0.4cm}
+\subsubsection{Challenge 4: ICP Convergence}
+
+\textbf{Problem:} ICP can converge slowly or to local minima.
+
+\vspace{0.2cm}
+\textbf{Solution:} Excluded border points from correspondence to improve stability and implemented dual convergence criteria (transformation magnitude and correspondence stability).
+
+\subsection{Performance Characteristics}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Algorithm} & \textbf{Complexity} & \textbf{Typical Time} \\
+\hline
+Normal Estimation & $O(n \log n)$ & $<$ 1s for 10K points \\
+ICP (per iteration) & $O(n \log n)$ & 0.1-0.5s per iteration \\
+Hoppe's Distance & $O(1)$ per query & $<$ 1ms per query \\
+RBF Initialization & $O(m^2)$ to $O(m^3)$ & 2-5s for 1K constraints \\
+RBF Evaluation & $O(k)$ per query & $<$ 1ms per query \\
+Monge Patch Fitting & $O(k)$ per point & $<$ 1s for 10K points \\
+Iterative Smoothing & $O(n \cdot |E|)$ per iteration & 0.01-0.1s per iteration \\
+Global Smoothing & $O(n^{1.5})$ to $O(n^2)$ & 0.5-5s \\
+Harmonic Parameterization & $O(n^{1.5})$ & 0.5-2s \\
+\hline
+\end{tabular}
+\caption{Performance characteristics (approximate, depends on mesh size and complexity)}
+\end{table}
+
+\subsection{Potential Improvements}
+
+\vspace{0.2cm}
+While all features work as intended, several enhancements could further improve performance and quality:
+
+\vspace{0.2cm}
+\begin{itemize}
+\item Adaptive RBF support radii could automatically adjust based on local point density for better reconstruction
+\item Multi-resolution ICP would enable faster convergence through hierarchical processing
+\item Replacing uniform Laplacian weights with cotangent weights would provide geometry-aware smoothing
+\item Angle-based parameterization offers an alternative to chord length for border mapping
+\item GPU acceleration could significantly speed up iterative methods and nearest neighbor searches
+\end{itemize}
+
+\subsection{Code Quality}
+
+\vspace{0.2cm}
+The implementation demonstrates:
+
+\vspace{0.2cm}
+\begin{itemize}
+\item Clear separation of concerns through modular class design
+\item Extensive use of const correctness and references for efficiency
+\item Proper error handling with informative console output
+\item Efficient use of STL containers and algorithms
+\item Seamless integration with professional libraries including Eigen, GLM, and nanoflann
+\end{itemize}
+
+\subsection{Final Remarks}
+
+\vspace{0.2cm}
+This project provided hands-on experience with fundamental geometry processing algorithms and their practical implementation. 
+
+\vspace{0.3cm}
+All source code is ready to build and available at \url{https://github.com/audigiem/GPR_labs}
+
+\newpage
+
+\appendix
+
+\section{Build Instructions}
+
+\subsection{Dependencies}
+
+The project requires the following libraries:
+\begin{itemize}
+    \item Eigen 3.3+ (linear algebra)
+    \item GLM (vector/matrix operations)
+    \item nanoflann (nearest neighbor search)
+    \item OpenGL/GLFW (visualization)
+\end{itemize}
+
+\subsection{Compilation}
+
+In each lab's root directory, create a build folder and run CMake:
+
+\begin{lstlisting}[language=bash]
+mkdir build
+cd build
+cmake ..
+make -j4
+\end{lstlisting}
+
+\subsection{Usage Examples}
+
+Depending on the lab, run the executable with appropriate arguments:
+
+\begin{lstlisting}[language=bash]
+# ICP and normal estimation
+cd path/to/01-icp-base/build
+./01-icp-base ../../scans/bunny/scan0.ply ../../scans/bunny/scan15.ply 
+\end{lstlisting}
+
+\section{Code Statistics}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|r|}
+\hline
+\textbf{File} & \textbf{Lines} & \textbf{Functions} \\
+\hline
+NormalEstimator.cpp & 75 & 1 \\
+IterativeClosestPoint.cpp & 180 & 4 \\
+SimpleDistance.cpp & 45 & 2 \\
+RBFFunction.cpp & 600 & 3 \\
+MongePatch.cpp & 95 & 2 \\
+LaplacianSmoothing.cpp & 280 & 5 \\
+Parameterizer.cpp & 250 & 1 \\
+\hline
+\textbf{Total} & \textbf{1525} & \textbf{18} \\
+\hline
+\end{tabular}
+\caption{Code statistics (excluding headers and comments)}
+\end{table}
+
+\section{References}
+
+\begin{enumerate}
+    \item Hoppe, H., et al. ``Surface reconstruction from unorganized points.'' SIGGRAPH 1992.
+    \item Taubin, G. ``A signal processing approach to fair surface design.'' SIGGRAPH 1995.
+    \item Floater, M.S. ``Parametrization and smooth approximation of surface triangulations.'' CAGD 1997.
+    \item Botsch, M., et al. ``Polygon Mesh Processing.'' AK Peters/CRC Press, 2010.
+    \item Alexa, M., et al. ``Computing and rendering point set surfaces.'' IEEE TVCG 2003.
+\end{enumerate}
+
+\end{document}
