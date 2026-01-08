@@ -23,13 +23,13 @@ labSmoothing/corrupted/
 *.a
 *.exe
 
-# CMake generated files (but keep cmake_modules/)
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-Makefile
-*.cmake
-!cmake_modules/
+# # CMake generated files (but keep cmake_modules/)
+# CMakeCache.txt
+# CMakeFiles/
+# cmake_install.cmake
+# # Makefile
+# *.cmake
+# !cmake_modules/
 
 # LaTeX auxiliary files (from report/)
 *.aux
@@ -39,6 +39,10 @@ Makefile
 *.fdb_latexmk
 *.fls
 *.synctex.gz
+*.pdf
+*.tar.gz
+*.zip
+*.tgz
 
 # Other
 .DS_Store
